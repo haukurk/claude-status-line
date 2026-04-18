@@ -3,7 +3,7 @@
 # Single line: Model | tokens | %used | %remain | think | 5h bar @reset | 7d bar @reset | extra
 
 set -f  # disable globbing
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 input=$(cat)
 
@@ -41,11 +41,18 @@ format_commas() {
     printf "%'d" "$1"
 }
 
-# Return color escape based on usage percentage
+# Return color escape based on usage percentage.
+# At ≥90% the color pulses between two red shades based on wall-clock seconds,
+# so a refresh lands on a different frame each time and the segment feels alive.
 # Usage: usage_color <pct>
 usage_color() {
     local pct=$1
-    if [ "$pct" -ge 90 ]; then echo "$red"
+    if [ "$pct" -ge 90 ]; then
+        if [ $(( $(date +%s) % 2 )) -eq 0 ]; then
+            printf '\033[38;2;255;85;85m'
+        else
+            printf '\033[38;2;255;160;160m'
+        fi
     elif [ "$pct" -ge 70 ]; then echo "$orange"
     elif [ "$pct" -ge 50 ]; then echo "$yellow"
     else echo "$green"
