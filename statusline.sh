@@ -3,7 +3,7 @@
 # Single line: Model | tokens | %used | %remain | think | 5h bar @reset | 7d bar @reset | extra
 
 set -f  # disable globbing
-VERSION="1.1.0"
+VERSION="1.1.1"
 
 input=$(cat)
 
@@ -437,7 +437,7 @@ version_cache_max_age=86400  # 24 hours
 version_needs_refresh=true
 version_data=""
 
-if [ -f "$version_cache_file" ]; then
+if [ -s "$version_cache_file" ]; then
     vc_mtime=$(stat -c %Y "$version_cache_file" 2>/dev/null || stat -f %m "$version_cache_file" 2>/dev/null)
     vc_now=$(date +%s)
     vc_age=$(( vc_now - vc_mtime ))
@@ -447,15 +447,21 @@ if [ -f "$version_cache_file" ]; then
     version_data=$(cat "$version_cache_file" 2>/dev/null)
 fi
 
+# Fetch in a detached background process so Claude Code's statusline timeout
+# can't kill curl mid-flight and leave an empty cache file.
 if $version_needs_refresh; then
-    touch "$version_cache_file" 2>/dev/null
-    vc_response=$(curl -s --max-time 5 \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/haukurk/claude-status-line/releases/latest" 2>/dev/null)
-    if [ -n "$vc_response" ] && echo "$vc_response" | jq -e '.tag_name' >/dev/null 2>&1; then
-        version_data="$vc_response"
-        echo "$vc_response" > "$version_cache_file"
-    fi
+    (
+        tmp=$(mktemp "${version_cache_file}.XXXXXX" 2>/dev/null) || exit 0
+        vc_response=$(curl -s --max-time 5 \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/haukurk/claude-status-line/releases/latest" 2>/dev/null)
+        if [ -n "$vc_response" ] && echo "$vc_response" | jq -e '.tag_name' >/dev/null 2>&1; then
+            printf '%s' "$vc_response" > "$tmp" && mv "$tmp" "$version_cache_file"
+        else
+            rm -f "$tmp"
+        fi
+    ) </dev/null >/dev/null 2>&1 &
+    disown 2>/dev/null || true
 fi
 
 update_line=""
